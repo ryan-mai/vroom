@@ -8,8 +8,16 @@
 
 #include "secrets.h"
 
-int TRIG_PIN = 21;
-int ECHO_PIN = 19;
+constexpr int IN1 = D1;
+constexpr int IN2 = D2;
+constexpr int IN3 = D5;
+constexpr int IN4 = D6;
+
+constexpr int ENA = D7;
+constexpr int ENB = D8;
+
+constexpr int TRIG_PIN = 21;
+constexpr int ECHO_PIN = 19;
 
 float duration_us, distance_cm;
 
@@ -17,18 +25,6 @@ unsigned long prevMillis = 0;
 unsigned long interval = 30000;
 
 WiFiManager wm;
-// void initWifi() {
-//   WiFi.mode(WIFI_STA);
-//   WiFi.begin(ssid, password);
-//   Serial.print("Connecting to WiFi...");
-//   while (WiFi.status() != WL_CONNECTED) {
-//     Serial.print(".");
-//     delay(1000);
-//   }
-//   Serial.println(WiFi.localIP());
-//   Serial.print("RSSI: ");
-//   Serial.println(WiFi.RSSI());
-// }
 
 void initWifi() {
   // ONLY RUN that sh once unless you changing wifi
@@ -43,27 +39,46 @@ void initWifi() {
   Serial.println(WiFi.RSSI());
 }
 
-// void reconnectWifi() {
-//   unsigned long currentMillis = millis();
-//   if ((WiFi.status() != WL_CONNECTED) && (currentMillis - prevMillis >= interval)) {
-//     Serial.print(millis());
-//     Serial.println("Reconnecting to WiFi...");
-//     WiFi.disconnect();
-//     WiFi.reconnect();
-//     prevMillis = currentMillis;
-//   }
-// }
+void initMotor() {
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  pinMode(ENA, OUTPUT);
+  pinMode(ENB, OUTPUT);
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+}
+
+void loopMotor() {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+
+  analogWrite(ENA, 700);
+  analogWrite(ENB, 700);
+  delay(200);
+  
+  analogWrite(ENA, 0);
+  analogWrite(ENB, 0);
+  delay(1000);
+}
 
 void setup() {
   Serial.begin(115200);
 
   initWifi();
-
+  initMotor();
   // pinMode(TRIG_PIN, OUTPUT);
   // pinMode(ECHO_PIN, INPUT);
 }
 
 void loop() {
+  loopMotor();
   // reconnectWifi();
   // digitalWrite(TRIG_PIN, HIGH);
   // delayMicroseconds(10);
