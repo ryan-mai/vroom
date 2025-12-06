@@ -6,16 +6,23 @@
     <title>RC Car Web Server</title>
     <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/dist/nipplejs.min.js"></script>
     <style>
-        @import url(https://fonts.googleapis.com/css?family=Lato:300italic,700italic,300,700);
+        @import url(https://fonts.googleapis.com/css?family=VT323);
+        html, body {
+            height: 100%;
+            margin: 0;
+            box-sizing: border-box;
+        }
+        *, *::before, *::after {
+            box-sizing: inherit;
+        }
         body {
             padding:50px;
-            font:14px/1.5 Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
-            color:#777;
+            font:14px/1.5 'VT323', "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-weight:300;
+            overflow-y: hidden;
         }
         h1, h2, h3 {
-            font-size: 28px;
-            line-height: 1.1;
+            font-size: 2rem;
         }
 
         h1 {
@@ -40,7 +47,8 @@
             position: relative;
             background: silver;
             box-sizing: content-box;
-            height: 450px;
+            min-height: calc(100vh - 100px);
+            border-radius: 12px;
         }
         #debug {
             position: absolute;
@@ -65,6 +73,7 @@
         .zone.static {
             display: block;
             background: rgba(255, 0, 0, 0.1);
+            border-radius: 12px;
         }
         .zone {
             display: none;
@@ -79,8 +88,8 @@
             padding: 10px 10px;
             margin: 0;
             color: white;
-            right: 10px;
-            bottom: 10px;
+            right: 5px;
+            bottom: 0;
         }
     </style>
 </head>
@@ -115,18 +124,133 @@
             </li>
             </ul>
         </div>
-        <div id="zone_static" class="zone static"><h1>v1</h1></div>
+        <div id="zone_static" class="zone static"><h1>ruckus v1.0</h1></div>
     </div>
     <script>
-        var joystick = nipplejs.create({
-            zone: document.getElementById('zone_static'),
-            mode: 'static',
-            position: {left: '50%', top: '50%'},
-            color: 'red',
-            size: 67,
-            fadeTime: 2,
-            shape: 'circle',
+        var joystick;
+        var s = function(sel) {
+            return document.querySelector(sel);
+        }
+        var sId = function(sel) {
+            return document.getElementById(sel)
+        }
+
+        var elDebug = sId('debug');
+        var els = {
+            position: {
+                x: elDebug.querySelector('.position .x .data'),
+                y: elDebug.querySelector('.position .y .data')
+            },
+            force: elDebug.querySelector('.force .data'),
+            pressure: elDebug.querySelector('.pressure .data'),
+            distance: elDebug.querySelector('.distance .data'),
+            angle: {
+                radian: elDebug.querySelector('.angle .radian .data'),
+                degree: elDebug.querySelector('.angle .degree .data')
+            },
+            direction: {
+                x: elDebug.querySelector('.direction .x .data'),
+                y: elDebug.querySelector('.direction .y .data'),
+                angle: elDebug.querySelector('.direction .angle .data')
+            }
+        };
+
+        var timeoutCreate;
+
+        function createThrottle (evt) {
+            clearTimeout(timeoutCreate);
+            timeoutCreate = setTimeout(() => {
+                createJoystick(evt);
+            }, 100); 
+        }
+
+        createThrottle;
+
+        function bind() {
+            joystick.on('start end', function(evt, data) {
+                debug(data);
+            }).on('move', function(evt, data) {
+                debug(data);
+                let force = data.force;
+                let speed = force * force;
+                // let speed = Math.pow(force, 1.8);
+                // let angle = data.angle.radian;
+                // let xDir = data.direction.x;
+                // let yDir = data.direction.y;
+                console.log(data)
+            }).on('end', function() {
+                
+            });
+        }
+
+        function getJoystickSize() {
+            const minSize = Math.min(window.innerWidth, window.innerHeight);
+            const size = Math.round(minSize * 0.20);
+            return Math.max(100, Math.min(225, size));
+        }
+
+        function getJoystickPos() {
+            if (window.innerWidth <= 480) {
+                return { left: '50%', bottom: '45%' };
+            } else if (window.innerWidth <= 900) {
+                return { left: '25%', bottom: '50%' };
+            } else {
+                return { left: '15%', bottom: '30%' }
+            }
+        }
+
+        function createJoystick(evt) {
+            var type = typeof evt === 'string' ?
+                evt : evt.target.getAttribute('data-type');
+            if (joystick) {
+                joystick.destroy();
+                joystick = null;
+            }
+
+            const zoneEl = document.getElementById('zone_static');
+            if (!zoneEl) return;
+
+            joystick = nipplejs.create({
+                zone: document.getElementById('zone_static'),
+                mode: 'static',
+                position: getJoystickPos(),
+                color: 'black',
+                size: getJoystickSize(),
+
+                shape: 'circle',
+            });
+            console.log(joystick, nipplejs);
+            bind();
+            
+        }
+        
+        createJoystick('static');
+
+        window.addEventListener('resize', function() {
+            setTimeout(function () {
+                createJoystick('static');
+            }, 120);
         });
+        window.addEventListener('orientationchange', function() {
+            setTimeout(function () {
+                createJoystick('static');
+            }, 120);
+        });
+
+        function debug(obj) {
+            function parseObj(sub, el) {
+                for (var i in sub) {
+                    if (typeof sub[i] === 'object' && el) {
+                        parseObj(sub[i], el[i]);
+                    } else if (el && el[i]) {
+                        el[i].innerHTML = sub[i];
+                    }
+                }
+            }
+            setTimeout(function() {
+                parseObj(obj, els);
+            }, 0);
+        }
     </script>
 </body>
 </html>
