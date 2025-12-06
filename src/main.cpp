@@ -2,20 +2,19 @@
 
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
 #include <Wire.h>
 
 #include "secrets.h"
 
-constexpr int IN1 = D1;
-constexpr int IN2 = D2;
-constexpr int IN3 = D5;
-constexpr int IN4 = D6;
+constexpr int IN1 = D1; // Motor 1 Forward
+constexpr int IN2 = D2; // Motor 1 Backward
+constexpr int IN3 = D5; // Motor 2 Forward
+constexpr int IN4 = D6; // Motor 2 Backward
 
-constexpr int ENA = D7;
-constexpr int ENB = D8;
+constexpr int ENA = D7; // Motor 1 Speed
+constexpr int ENB = D8; // Motor 2 Speed
 
 constexpr int TRIG_PIN = 21;
 constexpr int ECHO_PIN = 19;
@@ -23,15 +22,16 @@ constexpr int ECHO_PIN = 19;
 float duration_us, distance_cm;
 
 String header;
-String outputIN1State = "off";
-String outputIN3State ="off";
 
-unsigned long currentMillis = millis();
-unsigned long previousMillis = 0;
-unsigned long timeoutMillis = 2000;
+String motor1State = "stop";
+String motor2State = "stop";
 
+// unsigned long currentMillis = millis();
+// unsigned long previousMillis = 0;
+// unsigned long timeoutMillis = 2000;
+
+ESP8266WebServer server(80);
 WiFiManager wm;
-WiFiServer server(80);
 
 void initWifi() {
   // ONLY RUN that sh once unless you changing wifi
@@ -41,92 +41,106 @@ void initWifi() {
     ESP.restart();
   }
   Serial.println("Connected!");
-  Serial.println(WiFi.SSID());
+  Serial.print("IP Address: http://");
   Serial.println(WiFi.localIP());
-  Serial.println(WiFi.RSSI());
 }
 
-void buildServer() {
-  WiFiClient client = server.available();
-  
-  if (client) {
-    currentMillis = millis();
-    previousMillis = currentMillis;
-    Serial.println("New Client.");
-    String currentLine = "";
+void handleRoot() {
+  String html = R"=====(
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>RC Car Web Server</title>
+      <style>
+        body { font-family: Arial; text-align: center; padding: 20px; }
+        button { font-size: 2em; padding: 20px 40px; margin: 10px; width: 90%; border-radius: 8px; }
+        .fwd { background:#4CAF50; color:white; }
+        .rev { background:#f44336; color:white; }
+        .stop { background:#555; color:white; }
+      </style>
+    </head>
+    <body>
+      <h1>RC Car Controller</h1>
+      
+      <h2>Left Motor: )=====" + motor1State + R"=====(</h2>
+      <a href="/m1/fwd"><button class="fwd">FORWARD</button></a>
+      <a href="/m1/rev"><button class="rev">REVERSE</button></a>
+      <a href="/m1/stop"><button class="stop">STOP</button></a><br><br>
+      
+      <h2>Right Motor: )=====" + motor2State + R"=====(</h2>
+      <a href="/m2/fwd"><button class="fwd">FORWARD</button></a>
+      <a href="/m2/rev"><button class="rev">REVERSE</button></a>
+      <a href="/m2/stop"><button class="stop">STOP</button></a>
+    </body>
+    </html>
+  )=====";
+  server.send(200, "text/html", html);
+}
 
-    while(client.connected() && currentMillis - previousMillis <= timeoutMillis) {
-      currentMillis = millis();
+void m1_fwd() {
+  Serial.println("Motor 1 Forward");
+  motor1State = "forward";
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, 700);
+  handleRoot();
+}
 
-      if (client.available()) {
-        char c = client.read();
-        Serial.write(c);
-        header += c;
+void m1_rev() {
+  Serial.println("Motor 1 Backward");
+  motor1State = "backward";
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  analogWrite(ENA, 700);
+  handleRoot();
+}
 
-        if (c == '\n') {
-          if (currentLine.length() == 0) {
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println("Connection: close");
-            client.println();
+void m1_stop() {
+  Serial.println("Motor 1 Stop");
+  motor1State = "stop";
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, 0);
+  handleRoot();
+}
+void m2_fwd() {
+  Serial.println("Motor 2 Forward");
+  motor2State = "forward";
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENB, 700);
+  handleRoot();
+}
+void m2_rev() {
+  Serial.println("Motor 2 Reverse");
+  motor2State = "reverse";
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+  analogWrite(ENB, 700);
+  handleRoot();
+}
+void m2_stop() {
+  Serial.println("Motor 2 Stop");
+  motor2State = "stop";
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENB, 0);
+  handleRoot();
+}
 
-            if (header.indexOf("GET /D1/high") >= 0) {
-              Serial.println("IN1 (D1) on");
-              outputIN1State = "on";
-              digitalWrite(IN1, HIGH);
-              analogWrite(ENA, 700);
-            } else if (header.indexOf("GET /D1/low") >= 0) {
-              Serial.println("IN1 (D1) off");
-              outputIN1State = "off";
-              digitalWrite(IN1, LOW);
-              analogWrite(ENA, 0);
-            } else if (header.indexOf("GET /D3/high") >= 0) {
-              Serial.println("IN3 (D3) on");
-              outputIN3State = "on";
-              digitalWrite(IN3, HIGH);
-              analogWrite(ENB, 700);
-            } else if (header.indexOf("GET /D3/low") >= 0) {
-              Serial.println("IN3 (D3) off");
-              outputIN3State = "off";
-              digitalWrite(IN3, LOW);
-              analogWrite(ENB, 0);
-            }
+void initRoute() {
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/m1/fwd", HTTP_GET, m1_fwd);
+  server.on("/m1/rev", HTTP_GET, m1_rev);
+  server.on("/m1/stop", HTTP_GET, m1_stop);
+  server.on("/m2/fwd", HTTP_GET, m2_fwd);
+  server.on("/m2/rev", HTTP_GET, m2_rev);
+  server.on("/m2/stop", HTTP_GET, m2_stop);
 
-            // HTML
-            client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta charset=\"UTF-8\">");
-            client.println("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-            client.println("<title>RC Car Controller</title>");
-            
-            // CSS
-            client.println("<style> html { font-family: Arial, Helvetica, sans-serif; display: inline-block; margin: 0px auto; text-align: center; }");
-            client.println(".motor-btn { background-color: #4CAF50; border: none; color: white; padding: 16px 40px; text-decoration: none; font-size: 2rem; margin: 2px; cursor: pointer; }");
-            client.println(".motor-btn2 { background-color: #555555; } </style>");
-            
-            // Body
-            client.println("<body><h1>RC Car Controller</h1>");
-            client.println("<p>Motor 1 - State</p>");
-            client.println("<p>IN1 - State" + outputIN1State + "</p>");
-            if (outputIN1State == "off") {
-              client.println("<p><a href=\"/D1/low\"><button class=\"motor-btn\">ON</button></a></p>");
-            } else {
-              client.println("<p><a href=\"/D1/off\"><button class=\"motor-btn\">ON</button></a></p>");
-            }
-            client.println();
-            break;
-          } else {
-            currentLine = "";
-          }
-        } else if (c != '\r') {
-          currentLine += c;
-        }
-      }
-    }
-    header = "";
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
-  }
+  server.begin();
+  Serial.println("HTTP server");
 }
 
 void initMotor() {
@@ -160,16 +174,17 @@ void loopMotor() {
 
 void setup() {
   Serial.begin(115200);
-
-  initWifi();
+  
   initMotor();
+  initWifi();
+  initRoute();
   // pinMode(TRIG_PIN, OUTPUT);
   // pinMode(ECHO_PIN, INPUT);
 }
 
 void loop() {
-  loopMotor();
-  buildServer();
+  server.handleClient();
+  // loopMotor();
   // reconnectWifi();
   // digitalWrite(TRIG_PIN, HIGH);
   // delayMicroseconds(10);
