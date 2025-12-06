@@ -1,33 +1,132 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RC Car Controller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RC Car Web Server</title>
+    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/dist/nipplejs.min.js"></script>
     <style>
-        html {
-            font-family: Arial, Helvetica, sans-serif;
-            display: inline-block;
-            margin: 0px auto;
-            text-align: center;
+        @import url(https://fonts.googleapis.com/css?family=Lato:300italic,700italic,300,700);
+        body {
+            padding:50px;
+            font:14px/1.5 Lato, "Helvetica Neue", Helvetica, Arial, sans-serif;
+            color:#777;
+            font-weight:300;
         }
-        .motor-btn {
-            background-color: #4CAF50;
-            border: none;
+        h1, h2, h3 {
+            font-size: 28px;
+            line-height: 1.1;
+        }
+
+        h1 {
+            display: block;
+            margin-block-start: 0.67em; /* Like 67 */
+            margin-block-end: 0.67em;
+            margin-inline-start: 0;
+            margin-inline-end: 0;
+            font-weight: bold;
+            unicode-bidi: isolate;
+        }
+
+        li {
+            display: list-item;
+            unicode-bidi: isolate;
+        }
+
+        ul {
+            list-style-type: disc;
+        }
+        #zone_joystick {
+            position: relative;
+            background: silver;
+            box-sizing: content-box;
+            height: 450px;
+        }
+        #debug {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 5px 0 5px 0;
+            width: 300px;
+            height: 450px;
+            box-sizing:border-box;
             color: white;
-            padding: 16px 40px;
-            text-decoration: none;
-            font-size: 2rem;
-            margin: 2px;
-            cursor: pointer;
         }
-        .motor-btn2 {
-            background-color: #555555;
+        #debug ul {
+            list-style: none;
+        }
+        #debug > ul {
+            padding-left: 0;
+        }
+        #debug .data {
+            color: #333333;
+            font-weight: 800;
+        }
+        .zone.static {
+            display: block;
+            background: rgba(255, 0, 0, 0.1);
+        }
+        .zone {
+            display: none;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            touch-action: none;
+        }
+        .zone > h1 {
+            position: absolute;
+            padding: 10px 10px;
+            margin: 0;
+            color: white;
+            right: 10px;
+            bottom: 10px;
         }
     </style>
 </head>
 <body>
-    <h1>RC Car Controller</h1>
-    <p></p>
+    <div id="zone_joystick">
+        <div id="debug">
+            <ul>
+            <li class="position">
+                position :
+                <ul>
+                <li class="x">x : <span class="data"></span></li>
+                <li class="y">y : <span class="data"></span></li>
+                </ul>
+            </li>
+            <li class="force">force : <span class="data"></span></li>
+            <li class="pressure">pressure : <span class="data"></span></li>
+            <li class="distance">distance : <span class="data"></span></li>
+            <li class="angle">
+                angle :
+                <ul>
+                <li class="radian">radian : <span class="data"></span></li>
+                <li class="degree">degree : <span class="data"></span></li>
+                </ul>
+            </li>
+            <li class="direction">
+                direction :
+                <ul>
+                <li class="x">x : <span class="data"></span></li>
+                <li class="y">y : <span class="data"></span></li>
+                <li class="angle">angle : <span class="data"></span></li>
+                </ul>
+            </li>
+            </ul>
+        </div>
+        <div id="zone_static" class="zone static"><h1>v1</h1></div>
+    </div>
+    <script>
+        var joystick = nipplejs.create({
+            zone: document.getElementById('zone_static'),
+            mode: 'static',
+            position: {left: '50%', top: '50%'},
+            color: 'red',
+            size: 67,
+            fadeTime: 2,
+            shape: 'circle',
+        });
+    </script>
 </body>
 </html>

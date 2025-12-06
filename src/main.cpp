@@ -45,6 +45,12 @@ void initWifi() {
   Serial.println(WiFi.localIP());
 }
 
+void joystick() {
+  String html = R"=====(
+  )=====";
+  server.send(200, "text/html", html);
+}
+
 void handleRoot() {
   String html = R"=====(
     <!DOCTYPE html>
