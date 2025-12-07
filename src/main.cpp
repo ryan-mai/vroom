@@ -261,6 +261,7 @@ void handleRoot() {
             let joystick = null;
             let lastRequest = 0;
             let stopTimer = null;
+            let lastMoveTime = 0;
             const STOP_DELAY = 200;
             const SEND_MIN_INTERVAL = 30;
 
@@ -316,6 +317,7 @@ void handleRoot() {
                     stopTimer = null;
                 }
             }
+
             function drive(force, angle) {
                 const throttle = Math.sin(angle);
                 const steering = Math.cos(angle) * 0.9;
@@ -346,6 +348,7 @@ void handleRoot() {
                     const { left, right } = drive(force, angle);
                     send(left, right);
                     autoStop();
+                    lastMoveTime = Date.now();
                 }).on('end', function() {
                     cancelAutoStop();
                     send(0, 0);
@@ -386,11 +389,27 @@ void handleRoot() {
             
             createJoystick('static');
 
+            function immediateStop() {
+              cancelAutoStop();
+              send(0, 0);
+            }
+
+            window.addEventListener('mouseup', immediateStop, {passive: true});
+            window.addEventListener('touchend', immediateStop, {passive: true});
+            window.addEventListener('pointerup', immediateStop, {passive: true});
+            window.addEventListener('pointercancel', immediateStop, {passive: true});
+            window.addEventListener('touchcancel', immediateStop, {passive: true});
+
+            document.addEventListener('visibilitychange', function(){
+                if (document.hidden) immediateStop();
+            });
+
             window.addEventListener('resize', function() {
                 setTimeout(function () {
                     createJoystick('static');
                 }, 120);
             });
+
             window.addEventListener('orientationchange', function() {
                 setTimeout(function () {
                     createJoystick('static');
@@ -411,6 +430,14 @@ void handleRoot() {
                     parseObj(obj, els);
                 }, 0);
             }
+
+            setInterval(function() {
+              if (lastMoveTime === 0) return;
+              if (Date.now() - lastMoveTime > 350) {
+                lastMoveTime = 0;
+                send(0, 0);
+              }
+            }, 150);
         </script>
     </body>
     </html>
