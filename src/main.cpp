@@ -10,14 +10,14 @@
 
 constexpr int IN1 = D1; // Motor 1 Forward
 constexpr int IN2 = D2; // Motor 1 Backward
-constexpr int IN3 = D5; // Motor 2 Forward
-constexpr int IN4 = D6; // Motor 2 Backward
+constexpr int IN3 = D6; // Motor 2 Forward
+constexpr int IN4 = D7; // Motor 2 Backward
 
-constexpr int ENA = D7; // Motor 1 Speed
+constexpr int ENA = D5; // Motor 1 Speed
 constexpr int ENB = D8; // Motor 2 Speed
 
-constexpr int TRIG_PIN = 21;
-constexpr int ECHO_PIN = 19;
+constexpr int TRIG_PIN = D4;
+constexpr int ECHO_PIN = D3;
 
 float duration_us, distance_cm;
 
@@ -29,64 +29,49 @@ String motor2State = "stop";
 ESP8266WebServer server(80);
 WiFiManager wm;
 
+const int MIN_MAG = 2;
+const int DEADZONE = 6;
+const int MIN_PWM = 120;
+const int MAX_PWM = 1023;
+
+static int mapInput(int mag) {
+  if (mag <= MIN_MAG) return 0;
+  return map(mag, MIN_MAG, 127, MIN_PWM, MAX_PWM);
+}
+
+
 void driveMotor(int l , int r) {
-  int speedL = abs(l);
-  int speedR = abs(r);
+  auto applyMotor = [](int val, int pin1, int pin2, int en) {
+    int mag = abs(val);
+    int pwm = mapInput(mag);
 
-  if (l > 10) {
-    Serial.println("Motor 1 Forward");
-    motor1State = "fwd";
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    int speed = map(speedL, 0, 127, 200, 1023);
-    analogWrite(ENA, speed);
-  } else if (l < -10) {
-    Serial.println("Motor 1 Reverse");
-    motor1State = "rev";
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
-    int speed = map(speedL, 0, 127, 200, 1023);
-    analogWrite(ENA, speed);
-  } else {
-    Serial.println("Motor 1 Stop");
-    motor1State = "stop";
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
-    analogWrite(ENA, 0);
-  }
+    if (pwm == 0) {
+      digitalWrite(pin1, LOW);
+      digitalWrite(pin2, LOW);
+      analogWrite(en, 0);
+      return;
+    }
 
+    if (val > 0) {
+      digitalWrite(pin1, HIGH);
+      digitalWrite(pin2, LOW);
+      analogWrite(en, pwm);
+    } else {
+      digitalWrite(pin1, LOW);
+      digitalWrite(pin2, HIGH);
+    }
 
-  if (r > 10) {
-    Serial.println("Motor 2 Forward");
-    motor2State = "fwd";
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
-    int speed = map(speedR, 0, 127, 200, 1023);
-    analogWrite(ENB, speed);
-  } else if (r < -10) {
-    Serial.println("Motor 2 Reverse");
-    motor2State = "rev";
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, HIGH);
-    int speed = map(speedR, 0, 127, 200, 1023);
-    analogWrite(ENB, speed);
-  } else {
-    Serial.println("Motor 2 Stop");
-    motor2State = "stop";
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, LOW);
-    analogWrite(ENB, 0);
-  }
+    analogWrite(en, pwm);
 
-  if (abs(l) <= 10 && abs(r) <= 10) {
-    analogWrite(ENA, 0);
-    analogWrite(ENB, 0);
-  }
+  };
+
+  applyMotor(l, IN1, IN2, ENA);
+  applyMotor(r, IN3, IN4, ENB);
 }
 
 void initWifi() {
   // ONLY RUN that sh once unless you changing wifi
-  // wm.resetSettings();
+  wm.resetSettings();
   if (!wm.autoConnect("RC-Car-Network")) {
     Serial.println("Couldn't connect: Restarting...");
     ESP.restart();
@@ -451,6 +436,7 @@ void initRoute() {
   Serial.println("API Online > 192.168.1.13");
 }
 
+// MOTOR SETUP
 void initMotor() {
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -465,44 +451,35 @@ void initMotor() {
   digitalWrite(IN4, LOW);
 }
 
-void loopMotor() {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
+// ULTRASONIC SENSOR SETUP
+void initSensor() {
+    pinMode(TRIG_PIN, OUTPUT);
+    pinMode(ECHO_PIN, INPUT);
+}
 
-  analogWrite(ENA, 700);
-  analogWrite(ENB, 700);
-  delay(200);
-  
-  analogWrite(ENA, 0);
-  analogWrite(ENB, 0);
-  delay(1000);
+void loopSensor() {
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+
+    duration_us = pulseIn(ECHO_PIN, HIGH);
+    distance_cm = 0.017 * duration_us;
+
+    Serial.print("distance: ");
+    Serial.print(distance_cm);
+    Serial.println(" cm");
 }
 
 void setup() {
-  Serial.begin(115200);
-  
-  initMotor();
-  initWifi();
-  initRoute();
-  // pinMode(TRIG_PIN, OUTPUT);
-  // pinMode(ECHO_PIN, INPUT);
+    Serial.begin(115200);
+    initMotor();
+    initWifi();
+    initRoute();
+    initSensor();
 }
 
 void loop() {
   server.handleClient();
   MDNS.update();
-  // loopMotor();
-  // reconnectWifi();
-  // digitalWrite(TRIG_PIN, HIGH);
-  // delayMicroseconds(10);
-  // digitalWrite(TRIG_PIN, LOW);
-
-  // duration_us = pulseIn(ECHO_PIN, HIGH);
-  // distance_cm = 0.017 * duration_us;
-
-  // Serial.print("distance: ");
-  // Serial.print(distance_cm);
-  // Serial.println(" cm");
+  loopSensor();
 }
