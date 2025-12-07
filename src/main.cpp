@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 #include <WiFiManager.h>
 #include <Wire.h>
 
@@ -40,6 +41,27 @@ void initWifi() {
     Serial.println("Couldn't connect: Restarting...");
     ESP.restart();
   }
+
+  if (MDNS.begin("ruckus")) {
+    Serial.println("Open at: http://ruckus.local"); // RUCKUS!!!
+  }
+
+  server.on("/api/drive", HTTP_POST, []() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Access-Control-Allow-Methods", "POST");
+    
+    if (!server.hasArg("plain")) {
+      server.send(400, "text/plain", "Could not fetch any data! :(");
+    };
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, server.arg("plain"));
+    if (err) {
+      server.send(400, "text/plain", "Bad JSON");
+      return;
+    }
+  });
+
   Serial.println("Connected!");
   Serial.print("IP Address: http://");
   Serial.println(WiFi.localIP());
@@ -52,36 +74,7 @@ void joystick() {
 }
 
 void handleRoot() {
-  String html = R"=====(
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>RC Car Web Server</title>
-      <style>
-        body { font-family: Arial; text-align: center; padding: 20px; }
-        button { font-size: 2em; padding: 20px 40px; margin: 10px; width: 90%; border-radius: 8px; }
-        .fwd { background:#4CAF50; color:white; }
-        .rev { background:#f44336; color:white; }
-        .stop { background:#555; color:white; }
-      </style>
-    </head>
-    <body>
-      <h1>RC Car Controller</h1>
-      
-      <h2>Left Motor: )=====" + motor1State + R"=====(</h2>
-      <a href="/m1/fwd"><button class="fwd">FORWARD</button></a>
-      <a href="/m1/rev"><button class="rev">REVERSE</button></a>
-      <a href="/m1/stop"><button class="stop">STOP</button></a><br><br>
-      
-      <h2>Right Motor: )=====" + motor2State + R"=====(</h2>
-      <a href="/m2/fwd"><button class="fwd">FORWARD</button></a>
-      <a href="/m2/rev"><button class="rev">REVERSE</button></a>
-      <a href="/m2/stop"><button class="stop">STOP</button></a>
-    </body>
-    </html>
-  )=====";
+  String html = "Ruckus RC Car API Online\nGo to http://ruckus.local to start driving!";
   server.send(200, "text/html", html);
 }
 
@@ -137,16 +130,16 @@ void m2_stop() {
 }
 
 void initRoute() {
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/m1/fwd", HTTP_GET, m1_fwd);
-  server.on("/m1/rev", HTTP_GET, m1_rev);
-  server.on("/m1/stop", HTTP_GET, m1_stop);
-  server.on("/m2/fwd", HTTP_GET, m2_fwd);
-  server.on("/m2/rev", HTTP_GET, m2_rev);
-  server.on("/m2/stop", HTTP_GET, m2_stop);
+  server.on("/", []() { handleRoot; });
+  // server.on("/m1/fwd", HTTP_GET, m1_fwd);
+  // server.on("/m1/rev", HTTP_GET, m1_rev);
+  // server.on("/m1/stop", HTTP_GET, m1_stop);
+  // server.on("/m2/fwd", HTTP_GET, m2_fwd);
+  // server.on("/m2/rev", HTTP_GET, m2_rev);
+  // server.on("/m2/stop", HTTP_GET, m2_stop);
 
   server.begin();
-  Serial.println("HTTP server");
+  Serial.println("API Online > http://ruckus.local");
 }
 
 void initMotor() {
@@ -190,6 +183,7 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  MDNS.update();
   // loopMotor();
   // reconnectWifi();
   // digitalWrite(TRIG_PIN, HIGH);

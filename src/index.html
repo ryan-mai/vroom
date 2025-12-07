@@ -97,13 +97,6 @@
     <div id="zone_joystick">
         <div id="debug">
             <ul>
-            <li class="position">
-                position :
-                <ul>
-                <li class="x">x : <span class="data"></span></li>
-                <li class="y">y : <span class="data"></span></li>
-                </ul>
-            </li>
             <li class="force">force : <span class="data"></span></li>
             <li class="pressure">pressure : <span class="data"></span></li>
             <li class="distance">distance : <span class="data"></span></li>
@@ -127,7 +120,13 @@
         <div id="zone_static" class="zone static"><h1>ruckus v1.0</h1></div>
     </div>
     <script>
-        var joystick;
+        const url = "http://ruckus.local";
+        let joystick = null;
+        let lastRequest = 0;
+        let stopTimer = null;
+        const STOP_DELAY = 400;
+        const SEND_MIN_INTERVAL = 30;
+
         var s = function(sel) {
             return document.querySelector(sel);
         }
@@ -137,10 +136,6 @@
 
         var elDebug = sId('debug');
         var els = {
-            position: {
-                x: elDebug.querySelector('.position .x .data'),
-                y: elDebug.querySelector('.position .y .data')
-            },
             force: elDebug.querySelector('.force .data'),
             pressure: elDebug.querySelector('.pressure .data'),
             distance: elDebug.querySelector('.distance .data'),
@@ -155,53 +150,84 @@
             }
         };
 
-        var timeoutCreate;
+        const send = (l, r) => {
+            const now = Date.now();
+            if (now - lastRequest < SEND_MIN_INTERVAL) return;
+            lastRequest = now;
 
-        function createThrottle (evt) {
-            clearTimeout(timeoutCreate);
-            timeoutCreate = setTimeout(() => {
-                createJoystick(evt);
-            }, 100); 
+            fetch(`${url}/api/drive`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    l: Math.round(l),
+                    r: Math.round(r)}),
+                keepalive: true
+            }).catch(() => {/* if ther are errors im quitting */ });
+        };
+
+        function autoStop() {
+            if (stopTimer) clearTimeout(stopTimer);
+            stopTimer = setTimeout(() => {
+                send(0, 0);
+                stopTimer = null;
+            }, STOP_DELAY);
         }
 
-        createThrottle;
+        function cancelAutoStop() {
+            if (stopTimer) {
+                clearTimeout(stopTimer);
+                stopTimer = null;
+            }
+        }
+        function drive(force, angle) {
+            const throttle = Math.sin(angle);
+            const steering = Math.cos(angle) * 0.9;
+
+            let left = throttle + steering;
+            let right = throttle - steering;
+
+            const max = Math.max(Math.abs(left), Math.abs(right), 1);
+            
+            left = (left / max) * force * 127;
+            right = (right / max) * force * 127;
+
+            return {
+                left: Math.round(left),
+                right: Math.round(right)
+            };
+        }
 
         function bind() {
-            joystick.on('start end', function(evt, data) {
+            joystick.on('start', function() {
+                cancelAutoStop();
+            })
+            joystick.on('move', function(evt, data) {
                 debug(data);
-            }).on('move', function(evt, data) {
-                debug(data);
-                let force = data.force;
-                let speed = force * force;
-                // let speed = Math.pow(force, 1.8);
-                // let angle = data.angle.radian;
-                // let xDir = data.direction.x;
-                // let yDir = data.direction.y;
+                const MARGIN = 0.1;
+                let force = data.force < MARGIN ? 0 : data.force;
+                let angle = data.angle.radian;
+                const { left, right } = drive(force, angle);
+                send(left, right);
+                autoStop();
                 console.log(data)
             }).on('end', function() {
-                
+                cancelAutoStop();
+                send(0, 0);
             });
         }
 
         function getJoystickSize() {
-            const minSize = Math.min(window.innerWidth, window.innerHeight);
-            const size = Math.round(minSize * 0.20);
-            return Math.max(100, Math.min(225, size));
+            if (window.innerWidth <= 480) return 75;
+            else if (window.innerWidth <= 1000) return 100;
+            return 250;
         }
 
         function getJoystickPos() {
-            if (window.innerWidth <= 480) {
-                return { left: '50%', bottom: '45%' };
-            } else if (window.innerWidth <= 900) {
-                return { left: '25%', bottom: '50%' };
-            } else {
-                return { left: '15%', bottom: '30%' }
-            }
+            if (window.innerWidth <= 480) return { left: '50%', bottom: '45%' };
+            return { left: '25%', bottom: '50%' };
         }
 
         function createJoystick(evt) {
-            var type = typeof evt === 'string' ?
-                evt : evt.target.getAttribute('data-type');
             if (joystick) {
                 joystick.destroy();
                 joystick = null;
@@ -211,12 +237,11 @@
             if (!zoneEl) return;
 
             joystick = nipplejs.create({
-                zone: document.getElementById('zone_static'),
+                zone: zoneEl,
                 mode: 'static',
                 position: getJoystickPos(),
                 color: 'black',
                 size: getJoystickSize(),
-
                 shape: 'circle',
             });
             console.log(joystick, nipplejs);
