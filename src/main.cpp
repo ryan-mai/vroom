@@ -10,7 +10,12 @@ ESP8266WebServer server(80);
 WiFiManager wm;
 
 void driveMotor(int l, int r) {
-    Serial.printf("JOY:%d:%d\n", l, r);
+    static unsigned long lastPrint = 0;
+    unsigned long now = millis();
+    if (now - lastPrint > 50) {
+        Serial.printf("JOY:%d:%d\n", l, r);
+        lastPrint = now;
+    }
 }
 
 void initWifi() {
@@ -149,13 +154,17 @@ void initWifi() {
                 <div id="zone_static" class="zone static"><h1>ruckus v1.0</h1></div>
             </div>
             <script>
-                const url = "http://192.168.1.13";
+                const url = "http://" + location.hostname;
                 let joystick = null;
                 let lastRequest = 0;
                 let stopTimer = null;
                 let lastMoveTime = 0;
                 const STOP_DELAY = 200;
                 const SEND_MIN_INTERVAL = 30;
+
+                let isActive = false;
+                let lastLeft = 0, lastRight = 0;
+                let sendInterval = null;
 
                 var s = function(sel) {
                     return document.querySelector(sel);
@@ -191,24 +200,9 @@ void initWifi() {
                         body: JSON.stringify({
                             l: Math.round(l),
                             r: Math.round(r)}),
-                        keepalive: true
                     }).catch(() => {/* if ther are errors im quitting */ });
                 };
 
-                function autoStop() {
-                    if (stopTimer) clearTimeout(stopTimer);
-                    stopTimer = setTimeout(() => {
-                        send(0, 0);
-                        stopTimer = null;
-                    }, STOP_DELAY);
-                }
-
-                function cancelAutoStop() {
-                    if (stopTimer) {
-                        clearTimeout(stopTimer);
-                        stopTimer = null;
-                    }
-                }
 
                 function drive(force, angle) {
                     const throttle = Math.sin(angle);
@@ -230,19 +224,41 @@ void initWifi() {
 
                 function bind() {
                     joystick.on('start', function() {
-                        cancelAutoStop();
-                    })
+                    isActive = true;
+
+                    if (!sendInterval) {
+                        sendInterval = setInterval(() => {
+                            send(lastLeft, lastRight);
+                            }, SEND_MIN_INTERVAL);
+                        }
+                    });
+
                     joystick.on('move', function(evt, data) {
                         debug(data);
-                        const MARGIN = 0.1;
-                        let force = data.force < MARGIN ? 0 : data.force;
-                        let angle = data.angle.radian;
+                        const MARGIN = 0.02;
+                        let force;
+
+                        if (typeof data.force === 'number') {
+                            force = data.force;
+                        } else if (typeof data.distance === 'number') {
+                            force = Math.min(1, data.distance / getJoystickSize());
+                        } else {
+                            force = 0;
+                        }
+
+                        if (force < MARGIN) {
+                            return;
+                        }
+                        let angle = data.angle && data.angle.radian ? data.angle.radian : 0;
                         const { left, right } = drive(force, angle);
+                        lastLeft = left;
+                        lastRight = right;
                         send(left, right);
-                        autoStop();
-                        lastMoveTime = Date.now();
                     }).on('end', function() {
-                        cancelAutoStop();
+                            if (sendInterval) {
+                            clearInterval(sendInterval);
+                            sendInterval = null;
+                        }
                         send(0, 0);
                     });
                 }
@@ -258,9 +274,11 @@ void initWifi() {
                     return { left: '25%', bottom: '50%' };
                 }
 
-                function createJoystick(evt) {
+                function createJoystick() {
                     if (joystick) {
-                        joystick.destroy();
+                        try {
+                            joystick.destroy();
+                        } catch (e) {}
                         joystick = null;
                     }
 
@@ -273,17 +291,38 @@ void initWifi() {
                         position: getJoystickPos(),
                         color: 'black',
                         size: getJoystickSize(),
-                        shape: 'circle',
+                        shape: 'circle'
                     });
                     bind();
-                    
                 }
-                
-                createJoystick('static');
+
+                createJoystick();
+
+                let currentSize = null;
+
+                function getSize() {
+                    if (window.innerWidth <= 480) return 'small';
+                    if (window.innerWidth <= 1000) return 'medium';
+                    return 'large';
+                }
+
+                function resizeScreen() {
+                    const newSize = getSize();
+                    if (newSize !== currentSize) {
+                        currentSize = newSize;
+                        return true;
+                    }
+                    return false;
+                }
+                currentSize = getSize();
 
                 function immediateStop() {
-                cancelAutoStop();
-                send(0, 0);
+                    if (sendInterval) {
+                    clearInterval(sendInterval);
+                    sendInterval = null;
+                    }
+                    isActive = false;
+                    send(0, 0);
                 }
 
                 window.addEventListener('mouseup', immediateStop, {passive: true});
@@ -296,16 +335,16 @@ void initWifi() {
                     if (document.hidden) immediateStop();
                 });
 
-                window.addEventListener('resize', function() {
-                    setTimeout(function () {
-                        createJoystick('static');
-                    }, 120);
+                window.addEventListener('resize', () => {
+                    if (resizeScreen()) {
+                        setTimeout(createJoystick, 150);
+                    }
                 });
 
-                window.addEventListener('orientationchange', function() {
-                    setTimeout(function () {
-                        createJoystick('static');
-                    }, 120);
+                window.addEventListener('orientationchange', () => {
+                    setTimeout(() => {
+                        if (resizeScreen()) createJoystick();
+                    }, 300);
                 });
 
                 function debug(obj) {
@@ -322,14 +361,6 @@ void initWifi() {
                         parseObj(obj, els);
                     }, 0);
                 }
-
-                setInterval(function() {
-                if (lastMoveTime === 0) return;
-                if (Date.now() - lastMoveTime > 350) {
-                    lastMoveTime = 0;
-                    send(0, 0);
-                }
-                }, 150);
             </script>
         </body>
         </html>
@@ -340,13 +371,20 @@ void initWifi() {
     });
 
     server.on("/api/drive", HTTP_POST, []() {
-        if (!server.hasArg("plain")) {
+        server.sendHeader("Access-Control-Allow-Origin", "*"); 
+        server.sendHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+        server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+        String body = server.arg("plain");
+        if (body.length() == 0) {
+            body = server.arg(0);
+        }
+        if (body.length() == 0) {
             server.send(400, "text/plain", "Missing body");
             return;
         }
 
         JsonDocument doc;
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
+        DeserializationError err = deserializeJson(doc, body);
         if (err) {
             server.send(400, "text/plain", "Bad JSON");
             return;
@@ -356,7 +394,6 @@ void initWifi() {
         int r = doc["r"] | 0;
 
         driveMotor(l, r);
-        server.sendHeader("Access-Control-Allow-Origin", "*");
         server.send(200, "application/json", "{\"ok\":true}");
     });
     server.begin();

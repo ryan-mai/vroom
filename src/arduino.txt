@@ -91,8 +91,18 @@ void initSensor() {
   digitalWrite(ECHO2, LOW);
 }
 
+uint32_t lastSensor = 0;
+const uint32_t SENSOR_INTERVAL = 200;
+float latestDistance = 999;
+
+void loopSensor() {
+  if (millis() - lastSensor >= SENSOR_INTERVAL) {
+    latestDistance = getDistance();
+    lastSensor = millis();
+  }
+}
+
 void initMotor() {
-  DBG("INIT", "Motor init");
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
@@ -110,16 +120,13 @@ void getCommands() {
   static String buf = "";
   while (esp.available()) {
     char c = esp.read();
-    DBG("RX", String("char='") + c + "'");
 
     if (c == '\n') {
       buf.trim();
-      DBG("RX", String("line=") + buf);
 
       if (buf.startsWith("JOY:")) {
         int l, r;
         if (sscanf(buf.c_str(), "JOY:%d:%d", &l, &r) == 2) {
-          DBG("JOY", String("Parsed L=") + l + " R=" + r);
           driveMotor(l, r);
         } else {
           DBG("JOY", "Bad format");
@@ -132,18 +139,20 @@ void getCommands() {
   }
 
   float distance = getDistance();
-  DBG("DIST", String("check ") + distance);
-
   if (distance > 2 && distance < 20) {
-    DBG("DIST", "OBSTACLE → STOP");
     driveMotor(0, 0);
   }
 
-  delay(10);
+  loopSensor();
+
+  if (latestDistance > 2 && latestDistance < 20) {
+    driveMotor(0, 0);
+  }
 }
 
 void setup() {
   Serial.begin(9600);
+  esp.begin(9600);
   delay(500);
   DBG("INIT", "Booting");
 
