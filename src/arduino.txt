@@ -6,11 +6,10 @@ SoftwareSerial esp(A0, A1);
 const uint8_t IN1 = 10, IN2 = 9, ENA = 11;
 const uint8_t IN3 = 8, IN4 = 7, ENB = 6;
 
-const uint8_t TRIG1 = 12, ECHO1 = 4;
-const uint8_t TRIG2 = 3, ECHO2 = 2;
+const uint8_t TRIG1 = 12, ECHO1 = 13;
+const uint8_t TRIG2 = 5, ECHO2 = 4;
 
 const int MIN_MAG = 2;
-const int DEADZONE = 6;
 const int MIN_PWM = 120;
 const int MAX_PWM = 1023;
 
@@ -19,13 +18,19 @@ static int mapInput(int mag) {
   return map(mag, MIN_MAG, 127, MIN_PWM, MAX_PWM);
 }
 
+#define DBG(tag, msg) { Serial.print('['); Serial.print(tag); Serial.print("] "); Serial.print(millis()); Serial.print("ms: "); Serial.println(msg); }
 
 void driveMotor(int l , int r) {
+  DBG("MOTOR", String("Cmd L=") + l + " R=" + r);
+
   auto applyMotor = [](int val, int pin1, int pin2, int en) {
     int mag = abs(val);
     int pwm = mapInput(mag);
 
+    DBG("MOTOR", String(" apply val=") + val + " pwm=" + pwm);
+
     if (pwm == 0) {
+      DBG("MOTOR", " STOP");
       digitalWrite(pin1, LOW);
       digitalWrite(pin2, LOW);
       analogWrite(en, 0);
@@ -33,15 +38,16 @@ void driveMotor(int l , int r) {
     }
 
     if (val > 0) {
+      DBG("MOTOR", " FORWARD");
       digitalWrite(pin1, HIGH);
       digitalWrite(pin2, LOW);
     } else {
+      DBG("MOTOR", " BACKWARD");
       digitalWrite(pin1, LOW);
       digitalWrite(pin2, HIGH);
     }
 
     analogWrite(en, pwm);
-
   };
 
   applyMotor(l, IN1, IN2, ENA);
@@ -53,19 +59,27 @@ float getDistance() {
   delayMicroseconds(10);
   digitalWrite(TRIG1, LOW);
   long time1 = pulseIn(ECHO1, HIGH, 30000);
-  
+
   digitalWrite(TRIG2, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG2, LOW);
   long time2 = pulseIn(ECHO2, HIGH, 30000);
 
-  float distance1 = time1 ? 999.0f : time1 * 0.017f;
-  float distance2 = time2 ? 999.0f : time2 * 0.017f;
+  float distance1 = (time1 == 0) ? 999.0f : time1 * 0.017f;
+  float distance2 = (time2 == 0) ? 999.0f : time2 * 0.017f;
+
+  static uint32_t lastPrint = 0;
+  if (millis() - lastPrint > 200) {
+    DBG("DIST", String("t1=") + time1 + " t2=" + time2);
+    DBG("DIST", String("d1=") + distance1 + " d2=" + distance2);
+    lastPrint = millis();
+  }
 
   return min(distance1, distance2);
 }
 
 void initSensor() {
+  DBG("INIT", "Sensor init");
   pinMode(TRIG1, OUTPUT);
   pinMode(ECHO1, INPUT);
   pinMode(TRIG2, OUTPUT);
@@ -78,6 +92,7 @@ void initSensor() {
 }
 
 void initMotor() {
+  DBG("INIT", "Motor init");
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
@@ -95,12 +110,19 @@ void getCommands() {
   static String buf = "";
   while (esp.available()) {
     char c = esp.read();
+    DBG("RX", String("char='") + c + "'");
+
     if (c == '\n') {
       buf.trim();
+      DBG("RX", String("line=") + buf);
+
       if (buf.startsWith("JOY:")) {
         int l, r;
         if (sscanf(buf.c_str(), "JOY:%d:%d", &l, &r) == 2) {
+          DBG("JOY", String("Parsed L=") + l + " R=" + r);
           driveMotor(l, r);
+        } else {
+          DBG("JOY", "Bad format");
         }
       }
       buf = "";
@@ -110,17 +132,26 @@ void getCommands() {
   }
 
   float distance = getDistance();
+  DBG("DIST", String("check ") + distance);
+
   if (distance > 2 && distance < 20) {
+    DBG("DIST", "OBSTACLE → STOP");
     driveMotor(0, 0);
   }
+
   delay(10);
 }
 
 void setup() {
+  Serial.begin(9600);
+  delay(500);
+  DBG("INIT", "Booting");
+
   initSensor();
   initMotor();
   driveMotor(0, 0);
-  Serial.println("Arduino UNO ONLINE! - Send Commands");
+
+  DBG("INIT", "Arduino UNO ONLINE - waiting for commands");
 }
 
 void loop() {
